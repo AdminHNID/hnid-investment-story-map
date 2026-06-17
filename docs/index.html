@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HNID Interactive Investment Story Map — Improved</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<style>
+body { margin:0; font-family: Arial, sans-serif; color:#173B2F; background:#f6f7f8; }
+.header { padding:18px 24px; background:#173B2F; color:white; }
+.header h1 { margin:0; font-size:28px; }
+.header p { margin:5px 0 0; }
+.wrap { display:flex; height:calc(100vh - 86px); }
+#map { flex:1; min-height:650px; }
+.panel { width:330px; padding:16px; background:white; box-shadow:-2px 0 8px rgba(0,0,0,.15); overflow:auto; }
+.metric { background:#eef4f0; border-left:6px solid #1a9850; padding:10px; margin-bottom:10px; }
+.metric b { display:block; font-size:22px; }
+button { padding:9px 10px; margin:4px 2px; border:0; border-radius:5px; background:#173B2F; color:white; cursor:pointer; }
+button.secondary { background:#666; }
+.yearBtn { color:white; font-weight:bold; }
+.legend-row { display:flex; align-items:center; gap:8px; margin:6px 0; font-size:14px; }
+.swatch { width:16px; height:16px; border-radius:50%; border:1px solid #fff; box-shadow:0 0 0 1px #aaa; }
+input[type=range] { width:100%; }
+.note { font-size:12px; color:#555; line-height:1.35; }
+.popup-title { font-weight:700; font-size:15px; margin-bottom:6px; }
+.popup-address { font-size:13px; margin-bottom:4px; }
+.popup-investment { font-size:13px; font-weight:700; }
+.district-label {
+  color:#000; font-size:14px; text-align:center;
+  text-shadow:0 1px 3px #fff, 0 -1px 3px #fff, 1px 0 3px #fff, -1px 0 3px #fff;
+  pointer-events:none;
+}
+@media (max-width: 800px) {
+  .wrap { display:block; height:auto; }
+  #map { height:65vh; min-height:430px; }
+  .panel { width:auto; box-shadow:none; }
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>HNID Investment Story Map</h1>
+  <p>Home Repair Investments, 2018–2026 — Nearly $1 Million Reinvested in Harambee Homes</p>
+</div>
+<div class="wrap"><div id="map" role="application" aria-label="HNID investment story map"></div><div class="panel" id="panel">
+<div class="metric"><span>Total Invested</span><b id="totalInvested">$0</b></div>
+<div class="metric"><span>Projects Shown</span><b id="projectCount">0</b></div>
+<h3>Year-by-Year Story</h3>
+<input id="yearSlider" type="range" min="0" max="7" value="7" step="1" aria-label="Year slider"/>
+<p><b>Showing through: <span id="yearLabel">2026</span></b></p>
+<button id="playBtn">Play Story</button><button class="secondary" id="showAllBtn">Show All</button><button class="secondary" id="toggleHeatBtn">Toggle Heat Map</button>
+<h3>Jump to Year</h3>
+<div id="yearButtons" aria-label="Jump to year"></div>
+<h3>Legend</h3><div id="legend"></div>
+<p class="note" id="note">Click any pin to view the public map popup: HNID Home Repair Investment, property address, and investment amount only. Homeowner names and other PII have been removed.</p>
+</div></div>
+<noscript><div style="padding:12px;background:#fee;color:#700">This interactive map requires JavaScript. Please enable JavaScript to view the map.</div></noscript>
+<script>
+// Improved map script — tries to fetch data/hnid-data.json and falls back to empty dataset with instructions.
+const DATA_URL = 'data/hnid-data.json';
+
+function money(n) { return '$' + n.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0}); }
+function escapeHtml(text) {
+  return String(text)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+function popup(d) {
+  return `<div class="popup-title">HNID Home Repair Investment</div>`+
+         `<div class="popup-address">${escapeHtml(d.address || 'Address not available')}</div>`+
+         `<div class="popup-investment">${d.year || ''} Investment: ${money(d.amount||0)}</div>`;
+}
+
+const map = L.map('map', { keyboard: true }).setView([43.078472, -87.912671], 14);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+
+// Boundary (kept same as original file for context)
+const hnidBoundaryCoords = [[43.0892003, -87.9136296], [43.0892003, -87.9215261], [43.0876561, -87.9215366], [43.0858497, -87.9211128], [43.0840219, -87.9200426], [43.0816662, -87.9201834], [43.078840, -87.919000], [43.075000, -87.915000]];
+const hnidBoundary = L.polygon(hnidBoundaryCoords, { color: '#000000', weight: 5, opacity: 1, fill: false }).addTo(map);
+L.marker([43.0785, -87.9130], { icon: L.divIcon({ className: 'district-label', html: '<strong>Harambee NID</strong>', iconSize: [130, 22], iconAnchor: [65, 11] }) }).addTo(map);
+map.fitBounds(hnidBoundary.getBounds().pad(0.12));
+
+let markerCluster = L.markerClusterGroup({ chunkedLoading: true, removeOutsideVisibleBounds: true });
+markerCluster.addTo(map);
+let heatLayer = null; let heatVisible = false;
+
+async function fetchData() {
+  try {
+    const res = await fetch(DATA_URL, {cache: 'no-cache'});
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const json = await res.json();
+    // Accept either an array at root or an object with records[] for helper file
+    if (Array.isArray(json)) return json;
+    if (json && Array.isArray(json.records)) return json.records;
+    throw new Error('Unexpected JSON structure');
+  } catch (err) {
+    console.warn('Could not fetch data from', DATA_URL, err);
+    const panel = document.getElementById('panel');
+    const note = document.getElementById('note');
+    note.innerHTML += '<br><strong>Data not loaded.</strong> To enable the map, add the full data array to <code>data/hnid-data.json</code> in the repository. A placeholder file exists on the improve/storymap branch.';
+    return [];
+  }
+}
+
+function updateHeat(filtered) {
+  if (heatLayer) map.removeLayer(heatLayer);
+  if (!filtered.length) return;
+  const points = filtered.filter(d=>d.lat && d.lng).map(d => [d.lat, d.lng, Math.min(1, Math.max(0.2, (d.amount||0)/20000))]);
+  heatLayer = L.heatLayer(points, {radius:28, blur:22, maxZoom:17});
+  if (heatVisible) heatLayer.addTo(map);
+}
+
+function renderThrough(year, data, summary) {
+  markerCluster.clearLayers();
+  const filtered = data.filter(d => (d.year || 0) <= year && d.lat && d.lng);
+  let total = 0;
+  filtered.forEach(d => {
+    total += (d.amount || 0);
+    const m = L.circleMarker([d.lat,d.lng], { radius:8, fillColor:d.color || '#2b8cbe', color:'#fff', weight:2, fillOpacity:0.92 });
+    m.bindPopup(popup(d));
+    markerCluster.addLayer(m);
+  });
+  document.getElementById('yearLabel').textContent = year;
+  document.getElementById('totalInvested').textContent = money(total);
+  document.getElementById('projectCount').textContent = filtered.length;
+  updateHeat(filtered);
+}
+
+function makeUI(years, summary, data) {
+  const yearSlider = document.getElementById('yearSlider');
+  yearSlider.max = Math.max(0, years.length-1);
+  yearSlider.value = years.length-1;
+
+  const yb = document.getElementById('yearButtons'); yb.innerHTML='';
+  years.forEach((y,i)=>{
+    const b = document.createElement('button');
+    b.className='yearBtn';
+    b.style.background = (summary && summary[y] && summary[y].color) ? summary[y].color : '#666';
+    b.textContent = y;
+    b.onclick = ()=>{ yearSlider.value = i; renderThrough(y, data, summary); };
+    yb.appendChild(b);
+  });
+
+  const lg = document.getElementById('legend'); lg.innerHTML='';
+  if (summary) {
+    years.forEach(y=>{
+      const row = document.createElement('div'); row.className='legend-row';
+      row.innerHTML = `<span class='swatch' style='background:${summary[y].color}'></span><span>${y} - ${summary[y].colorName} - ${summary[y].projects || 0} projects - ${money(summary[y].investment || 0)}</span>`;
+      lg.appendChild(row);
+    });
+  } else {
+    lg.innerHTML = '<div class="note">Legend not available. Provide a summary object in data/hnid-data.json or update the HTML.</div>';
+  }
+
+  document.getElementById('playBtn').onclick = ()=> playStory(years, data);
+  document.getElementById('showAllBtn').onclick = ()=> { yearSlider.value = years.length-1; renderThrough(years[years.length-1], data, summary); };
+  document.getElementById('toggleHeatBtn').onclick = ()=> { heatVisible = !heatVisible; renderThrough(years[parseInt(yearSlider.value)], data, summary); };
+
+  yearSlider.addEventListener('input', e => renderThrough(years[parseInt(e.target.value)], data, summary));
+}
+
+function playStory(years, data) {
+  let i = 0; const slider = document.getElementById('yearSlider');
+  slider.value = 0; renderThrough(years[0], data);
+  const timer = setInterval(()=>{
+    i++;
+    if (i>=years.length) { clearInterval(timer); return; }
+    slider.value = i; renderThrough(years[i], data);
+  }, 1000);
+}
+
+(async function init(){
+  const data = await fetchData();
+  // derive years and summary if present
+  let years = [];
+  let summary = null;
+  if (data && data.length) {
+    years = Array.from(new Set(data.map(d=>d.year))).sort((a,b)=>a-b);
+  } else {
+    // fallback default years from original UI
+    years = [2018, 2019, 2020, 2022, 2023, 2024, 2025, 2026];
+  }
+  // Try to load summary from same JSON if present
+  try {
+    const res = await fetch(DATA_URL, {cache:'no-cache'});
+    if (res.ok) {
+      const j = await res.json();
+      if (j && j.summary) summary = j.summary;
+    }
+  } catch(e){}
+
+  makeUI(years, summary, data);
+  renderThrough(years[years.length-1], data, summary);
+})();
+</script>
+</body>
+</html>
