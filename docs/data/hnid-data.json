@@ -1,0 +1,5 @@
+[
+  {"year":2018,"colorName":"Red","color":"#d73027","lat":43.070237,"lng":-87.908081,"address":"2837 N Richards","amount":6000.0},
+  {"year":2018,"colorName":"Red","color":"#d73027","lat":43.071234,"lng":-87.909123,"address":"Example St 1","amount":5000},
+  {"year":2019,"colorName":"Blue","color":"#4575b4","lat":43.080,"lng":-87.915,"address":"Example St 2","amount":8000}
+]
